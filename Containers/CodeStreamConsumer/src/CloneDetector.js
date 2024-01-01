@@ -10,6 +10,7 @@ const Clone = require('./Clone');
 
 const DEFAULT_CHUNKSIZE=5;
 
+
 class CloneDetector {
     #myChunkSize = process.env.CHUNKSIZE || DEFAULT_CHUNKSIZE;
     #myFileStore = FileStorage.getInstance();
@@ -91,6 +92,25 @@ class CloneDetector {
         //
         // Return: file, including file.instances which is an array of Clone objects (or an empty array).
         //
+        
+        let newInstances = [];
+        
+        //console.log('Comparing ' + file.name + ' with ' + compareFile.name);
+
+        //for each chunk in file.chunks
+        for (let i = 0; i < file.chunks.length; i++) {
+            let chunk = file.chunks[i];
+            //find all #chunkMatch() in compareFile.chunks
+            let matchingChunks = compareFile.chunks.filter( compareChunk => this.#chunkMatch(chunk, compareChunk) );
+            //for each matching chunk, create a new Clone.
+            for (let j = 0; j < matchingChunks.length; j++) {
+                let matchingChunk = matchingChunks[j];
+                let clone = new Clone(file.name, compareFile.name, chunk, matchingChunk);
+                newInstances.push(clone);
+            }
+        }
+        
+        
 
         file.instances = file.instances || [];        
         file.instances = file.instances.concat(newInstances);
@@ -112,6 +132,24 @@ class CloneDetector {
         //         and not any of the Clones used during that expansion.
         //
 
+        for (let i = 0; i < file.instances.length; i++) {
+            let clone = file.instances[i];
+            let cloneExpanded = true;
+            while (cloneExpanded) {
+                cloneExpanded = false;
+                for (let j = 0; j < file.instances.length; j++) {
+                    let otherClone = file.instances[j];
+                    if (clone != otherClone) {
+                        cloneExpanded = clone.maybeExpandWith(otherClone);
+                        if (cloneExpanded) {
+                            file.instances.splice(j, 1);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         return file;
     }
     
@@ -128,6 +166,21 @@ class CloneDetector {
         //
         // Return: file, with file.instances containing unique Clone objects that may contain several targets
         //
+
+        let newInstances = [];
+        for (let i = 0; i < file.instances.length; i++) {
+            let clone = file.instances[i];
+            let found = newInstances.find( newClone => clone.equals(newClone) );
+            
+            
+            if (found) {
+                console.log('Existing clone found');
+                found.addTarget(clone); //existing clone
+            } else {
+                newInstances.push(clone);     //new clone
+            }
+        }
+        file.instances = newInstances;
 
         return file;
     }
@@ -170,6 +223,7 @@ class CloneDetector {
             //
             // 3. If the same clone is found in several places, consolidate them into one Clone.
             //
+
             file = this.#filterCloneCandidates(file, f); 
             file = this.#expandCloneCandidates(file);
             file = this.#consolidateClones(file); 
